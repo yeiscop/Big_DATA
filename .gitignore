@@ -1,0 +1,9 @@
+# Databricks unsupported assets
+cobranza_v7_serving.gitignore
+cobranza_v7_serving
+
+# MLflow experiments (not supported in Git folders)
+*.experiment
+
+# Model serving endpoints (not supported in Git folders)
+*_serving
