@@ -11,24 +11,18 @@ La solución implementa una arquitectura Medallion en Databricks con cuatro etap
 Bronze conserva el archivo original intacto y lee todas las columnas como texto para evitar pérdidas silenciosas, especialmente con valores que utilizan coma decimal. Cada fila incorpora información de linaje, incluyendo lote, archivo de origen, huella SHA-256 e instante de carga.
 El pipeline es idempotente mediante control de lotes por huella del archivo. La ejecución se orquesta con cuatro tareas: 01_bronze_ingestion, 02_silver_transformation, 03_validate_silver y 04_gold_features. Si la validación falla, el flujo se detiene antes de actualizar Gold.
 <img width="953" height="668" alt="image" src="https://github.com/user-attachments/assets/3243fc3c-81ae-411b-9e07-4738abdfcf74" />
-Figura — Historial del job CEE_Aragon_ETL_Pipeline y comportamiento de la validación.
 # 4. Calidad de los datos
 Las filas que incumplen reglas no se eliminan: se envían a una tabla de cuarentena con el identificador de la regla que provocó el rechazo. Se aplicaron reglas sobre año de construcción, año de emisión, superficie, emisiones de CO₂ y consumo, incluyendo validaciones de conversión numérica.
 La ingesta quedó reconciliada exactamente: 189.441 registros válidos + 2.704 en cuarentena = 192.145 registros de origen. Además, los 76 inmuebles sin letra de clasificación se conservaron porque el consumo objetivo sí estaba disponible; el guion de clasificación se normalizó a nulo.
 <img width="953" height="534" alt="image" src="https://github.com/user-attachments/assets/7a582cd0-9292-4830-8ada-d94fc5d20b34" />
-Figura — Reglas y distribución de filas rechazadas por calidad.
 <img width="953" height="381" alt="image" src="https://github.com/user-attachments/assets/bc1ff40d-caf0-45e3-96f4-e84edae3852e" />
-Figura — Reconciliación de registros de origen, válidos y en cuarentena
 # 5. Modelo y Resultados
 Se separaron 151.640 registros para entrenamiento y 37.801 para prueba desde el principio, manteniendo el conjunto de prueba fuera del entrenamiento. La línea base fue el consumo medio por zona climática, con MAE de 88,09 kWh/m²·año.
 <img width="842" height="187" alt="image" src="https://github.com/user-attachments/assets/e7702279-8250-42b9-8584-8b1aaaf0b82e" />
 Gradient boosting obtuvo un MAE de 71,71 kWh/m²·año, equivalente a un error medio aproximado del 28 % respecto a un consumo medio de 256 kWh/m²·año. El R² de 0,294 indica que el modelo explica el 29 % de la variación; el resto depende de factores que el catastro no registra, como instalaciones térmicas, cerramientos y uso del edificio. Las ejecuciones y métricas quedaron registradas en MLflow.
 <img width="938" height="466" alt="image" src="https://github.com/user-attachments/assets/992ce68a-38a4-492c-8f07-8da425d54b80" />
-Figura — Comparación del error absoluto medio de los algoritmos frente a la línea base.
 <img width="938" height="358" alt="image" src="https://github.com/user-attachments/assets/bb939f69-0253-4a25-a358-94d3f501eb39" />
-Figura — Matriz de confusión y métricas de clasificación derivadas del consumo predicho.
 <img width="938" height="393" alt="image" src="https://github.com/user-attachments/assets/316cae76-fc7a-460c-8d63-ada925ecc137" />
-Figura — Comparación de priorización del modelo frente a una selección aleatoria.
 # 6. Clasificación y Utilidad
 Aunque el objetivo principal es continuo, el consumo predicho se convirtió en una decisión binaria de ineficiencia para obtener métricas de clasificación. El umbral se definió por zona climática usando el percentil 95 del consumo de los edificios clasificados A–D, evitando utilizar un único umbral absoluto.
 En el conjunto de prueba, el modelo alcanzó precisión de 59,2 %, recall de 33,1 % y exactitud de 79,7 %. Como la clase eficiente domina el conjunto, la exactitud por sí sola resulta poco informativa: un modelo trivial que siempre predijera 'eficiente' alcanzaría 77,4 %. La utilidad principal está en priorizar inspecciones: el modelo encontró una proporción de inmuebles ineficientes 2,6 veces superior a la selección aleatoria.
@@ -38,13 +32,9 @@ La prevención se implementa mediante una lista blanca explícita de variables e
 # 8. Consumo y visualización
 Las tablas Gold se exponen mediante un dashboard nativo de Databricks, Power BI conectado directamente al SQL Warehouse y un tablero web independiente. Power BI utiliza las mismas tablas del Lakehouse, evitando exportaciones intermedias y manteniendo la trazabilidad del pipeline.
 <img width="938" height="459" alt="image" src="https://github.com/user-attachments/assets/e59eec16-2bea-46af-9c8b-b6c2d5b39029" />
-Figura — Dashboard nativo de Databricks sobre las tablas Gold.
 <img width="938" height="577" alt="image" src="https://github.com/user-attachments/assets/a83757af-e10a-4142-86ff-ec1d2d56169a" />
-Figura — Conexión de Power BI al SQL Warehouse y modelo semántico.
 <img width="938" height="508" alt="image" src="https://github.com/user-attachments/assets/a1c7c657-e11a-41e9-9dc5-8aaa200fc615" />
-Figura — Conexión de Power BI al SQL Warehouse y modelo semántico.
 <img width="938" height="493" alt="image" src="https://github.com/user-attachments/assets/a1ddfa6f-c81c-4cde-9b68-420ef455e9b8" />
-Figura — Informe de Power BI y superficies de consumo del modelo.
 # 9. Correcciones y aprendizajes
 Durante el desarrollo se identificaron y corrigieron problemas del pipeline. La regla inicial de valores atípicos fue sustituida por el rango físico [20, 1000] kWh/m²·año. El umbral inicial para clasificar ineficiencia generaba una matriz degenerada, por lo que se reemplazó por el percentil 95 de A–D por zona. La validación basada en RDD se reescribió con DataFrame para hacerla compatible con cómputo serverless.
 También se comprobó que las coordenadas del origen no eran utilizables: una de sus componentes estaba completamente vacía. Por ello, la ubicación se representó mediante provincia, municipio y zona climática. 
